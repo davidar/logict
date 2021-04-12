@@ -103,7 +103,7 @@ instance Monad m => MonadLogic (FBackTrackT m) where
   (>>-) = (>>=)
 
 instance MonadTrans FBackTrackT where
-  lift = FBackTrackT . fmap One
+  lift = FBackTrackT . liftM One
 
 instance MonadIO m => MonadIO (FBackTrackT m) where
   liftIO = lift . liftIO
