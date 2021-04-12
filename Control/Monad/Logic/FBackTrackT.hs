@@ -79,7 +79,9 @@ instance Monad m => Alternative (FBackTrackT m) where
           Choice b r -> mcons b (i <|> r)
           Incomplete j -> yield (i <|> j)
 
-instance Monad m => MonadPlus (FBackTrackT m)
+instance Monad m => MonadPlus (FBackTrackT m) where
+  mzero = empty
+  mplus = (<|>)
 #if MIN_VERSION_base(4,9,0)
 instance Monad m => Semigroup (FBackTrackT m a) where
   (<>) = mplus
