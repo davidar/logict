@@ -12,6 +12,7 @@ import           Control.Concurrent.Async ( race )
 import           Control.Exception
 import           Control.Monad.Identity
 import           Control.Monad.Logic
+import qualified Control.Monad.Logic.FBackTrackT as FBT
 import           Control.Monad.Reader
 import qualified Control.Monad.State.Lazy as SL
 import qualified Control.Monad.State.Strict as SS
@@ -50,7 +51,7 @@ monadReader3 = assertEqual "should be equal" [5,3] $
 
 nats, odds, oddsOrTwo,
   oddsOrTwoUnfair, oddsOrTwoFair,
-  odds5down :: Monad m => LogicT m Integer
+  odds5down :: (MonadLogic m, MonadPlus m, Monoid (m Integer)) => m Integer
 
 #if MIN_VERSION_base(4,8,0)
 nats = pure 0 `mplus` ((1 +) <$> nats)
@@ -253,7 +254,7 @@ main = defaultMain $
         -- Using the fair conjunction operator (>>-) the test produces values
 
         testCase "fair conjunction :: LogicT" $ [2,4,6,8] @=?
-        observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                        do x <- (return 0 `mplus` return 1) >>- oddsPlus
                           if even x then return x else mzero
                       )
@@ -269,7 +270,7 @@ main = defaultMain $
         -- value for every 1 received.
 
       , testCase "fair conjunction OK" $ [2,4,6,8] @=?
-        observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                        (return 0 `mplus` return 1) >>-
                         oddsPlus >>-
                         (\x -> if even x then return x else mzero)
@@ -279,7 +280,7 @@ main = defaultMain $
         -- oddsPlus productions in the above and >>- is effectively >>=.
 
       , testCase "fair conjunction also OK" $ [2,4,6,8] @=?
-        observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                        ((return 0 `mplus` return 1) >>-
                         \a -> oddsPlus a) >>=
                         (\x -> if even x then return x else mzero)
@@ -295,38 +296,32 @@ main = defaultMain $
         -- between those values, but the first (oddsPlus 0 ...) never
         -- produces any values.
 
-      , testCase "fair conjunction NON-PRODUCTIVE" $
-        (Left () @=?) =<<
-        (nonTerminating $
-         observeManyT 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+      , testCase "fair conjunction PRODUCTIVE" $ [2,4,6,8] @=?
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                            (return 0 `mplus` return 1) >>-
                            \a -> oddsPlus a >>-
                                  (\x -> if even x then return x else mzero)
-                        ))
+                        )
 
         -- This shows that the second >>- is effectively >>= since
         -- there's no choice point for it, and values still cannot be
         -- produced.
 
-      , testCase "fair conjunction also NON-PRODUCTIVE" $
-        (Left () @=?) =<<
-        (nonTerminating $
-         observeManyT 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+      , testCase "fair conjunction also PRODUCTIVE" $ [2,4,6,8] @=?
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                            (return 0 `mplus` return 1) >>-
                            \a -> oddsPlus a >>=
                                  (\x -> if even x then return x else mzero)
-                        ))
+                        )
 
         -- unfair conjunction does not terminate or produce any
         -- values: this will fail (expectedly) due to a timeout
 
-      , testCase "unfair conjunction is NON-PRODUCTIVE" $
-        (Left () @=?) =<<
-        (nonTerminating $
-         observeManyT 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
+      , testCase "unfair conjunction is PRODUCTIVE" $ [2,4,6,8] @=?
+        FBT.observeMany 4 (let oddsPlus n = odds >>= \a -> return (a + n) in
                            do x <- (return 0 `mplus` return 1) >>= oddsPlus
                               if even x then return x else mzero
-                        ))
+                        )
 
       , testCase "fair conjunction :: []" $ [2,4,6,8] @=?
         (take 4 $ let oddsL = [ 1 :: Integer ] `mplus` [ o | o <- [3..], odd o ]
