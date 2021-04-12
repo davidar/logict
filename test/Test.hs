@@ -28,28 +28,26 @@ import           Data.Monoid
 #endif
 
 
-{-
 monadReader1 :: Assertion
 monadReader1 = assertEqual "should be equal" [5 :: Int] $
-  runReader (observeAllT (local (+ 5) ask)) 0
+  runReader (observeAllT (lift $ local (+ 5) ask)) 0
 
 monadReader2 :: Assertion
 monadReader2 = assertEqual "should be equal" [(5, 0)] $
   runReader (observeAllT foo) 0
   where
-    foo :: MonadReader Int m => m (Int,Int)
+    foo :: FBackTrackT (Reader Int) (Int,Int)
     foo = do
-      x <- local (5+) ask
-      y <- ask
+      x <- lift $ local (5+) ask
+      y <- lift ask
       return (x,y)
 
 monadReader3 :: Assertion
 monadReader3 = assertEqual "should be equal" [5,3] $
   runReader (observeAllT (plus5 `mplus` mzero `mplus` plus3)) (0 :: Int)
   where
-    plus5 = local (5+) ask
-    plus3 = local (3+) ask
--}
+    plus5 = lift $ local (5+) ask
+    plus3 = lift $ local (3+) ask
 
 nats, odds, oddsOrTwo,
   oddsOrTwoUnfair, oddsOrTwoFair,
@@ -83,13 +81,13 @@ main = defaultMain $
   localOption (mkTimeout 3000000) $  -- 3 second deadman timeout
 #endif
   testGroup "All"
-  [ {-testGroup "Monad Reader + env"
+  [ testGroup "Monad Reader + env"
     [ testCase "Monad Reader 1" monadReader1
     , testCase "Monad Reader 2" monadReader2
     , testCase "Monad Reader 3" monadReader3
     ]
 
-  ,-} testGroup "Various monads"
+  , testGroup "Various monads"
     [
       -- nats will generate an infinite number of results; demonstrate
       -- various ways of observing them via Logic/LogicT
