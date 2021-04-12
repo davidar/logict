@@ -37,20 +37,21 @@ newtype FBackTrackT m a =
 
 type FBackTrack = FBackTrackT Identity
 
-yield :: Applicative f => FBackTrackT f a -> FBackTrackT f a
-yield = FBackTrackT . pure . Incomplete
+yield :: Monad m => FBackTrackT m a -> FBackTrackT m a
+yield = FBackTrackT . return . Incomplete
 
-mcons :: Applicative f => a -> FBackTrackT f a -> FBackTrackT f a
-mcons a = FBackTrackT . pure . Choice a
+mcons :: Monad m => a -> FBackTrackT m a -> FBackTrackT m a
+mcons a = FBackTrackT . return . Choice a
 
 instance Monad m => Functor (FBackTrackT m) where
   fmap = liftM
 
 instance Monad m => Applicative (FBackTrackT m) where
-  pure = FBackTrackT . pure . One
+  pure = FBackTrackT . return . One
   (<*>) = ap
 
 instance Monad m => Monad (FBackTrackT m) where
+  return = pure
   m >>= f =
     FBackTrackT $
     unFBackTrackT m >>=
@@ -61,7 +62,7 @@ instance Monad m => Monad (FBackTrackT m) where
       Incomplete i -> yield (i >>= f)
 
 instance Monad m => Alternative (FBackTrackT m) where
-  empty = FBackTrackT $ pure Nil
+  empty = FBackTrackT $ return Nil
   m1 <|> m2 =
     FBackTrackT $
     unFBackTrackT m1 >>=
@@ -92,11 +93,12 @@ instance Monad m => Monoid (FBackTrackT m a) where
 instance Monad m => MonadLogic (FBackTrackT m) where
   msplit m =
     FBackTrackT $
-    unFBackTrackT m >>= \case
-      Nil -> pure . One $ Nothing
-      One x -> pure . One $ Just (x, empty)
-      Choice x r -> pure . One $ Just (x, r)
-      Incomplete i -> pure . Incomplete $ msplit i
+    unFBackTrackT m >>=
+    unFBackTrackT . \case
+      Nil -> return Nothing
+      One x -> return $ Just (x, empty)
+      Choice x r -> return $ Just (x, r)
+      Incomplete i -> yield $ msplit i
   interleave = (<|>)
   (>>-) = (>>=)
 
@@ -109,25 +111,25 @@ instance MonadIO m => MonadIO (FBackTrackT m) where
 observeAllT :: Monad m => FBackTrackT m a -> m [a]
 observeAllT m =
   unFBackTrackT m >>= \case
-    Nil -> pure []
-    One a -> pure [a]
+    Nil -> return []
+    One a -> return [a]
     Choice a r -> do
       t <- observeAllT r
-      pure (a : t)
+      return (a : t)
     Incomplete r -> observeAllT r
 
 observeAll :: FBackTrack a -> [a]
 observeAll = runIdentity . observeAllT
 
 observeManyT :: Monad m => Int -> FBackTrackT m a -> m [a]
-observeManyT 0 _ = pure []
+observeManyT 0 _ = return []
 observeManyT n m =
   unFBackTrackT m >>= \case
-    Nil -> pure []
-    One a -> pure [a]
+    Nil -> return []
+    One a -> return [a]
     Choice a r -> do
       t <- observeManyT (n - 1) r
-      pure (a : t)
+      return (a : t)
     Incomplete r -> observeManyT n r
 
 observeMany :: Int -> FBackTrack a -> [a]
@@ -141,9 +143,14 @@ observeT :: MonadFail m => FBackTrackT m a -> m a
 observeT m =
   unFBackTrackT m >>= \case
     Nil -> fail "No answer."
-    One a -> pure a
-    Choice a _ -> pure a
+    One a -> return a
+    Choice a _ -> return a
     Incomplete r -> observeT r
 
 observe :: FBackTrack a -> a
-observe = runIdentity . observeT
+observe m =
+  case runIdentity (unFBackTrackT m) of
+    Nil -> error "No answer."
+    One a -> a
+    Choice a _ -> a
+    Incomplete r -> observe r
