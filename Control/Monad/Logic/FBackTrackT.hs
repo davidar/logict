@@ -24,18 +24,24 @@ import Data.Semigroup (Semigroup(..))
 #endif
 import qualified Data.Foldable as F
 
-data FBackTrackTE m a
+data Stream s a
   = Nil
   | One a
-  | Choice a (FBackTrackT m a)
-  | Incomplete (FBackTrackT m a)
+  | Choice a s
+  | Incomplete s
 
 newtype FBackTrackT m a =
   FBackTrackT
-    { unFBackTrackT :: m (FBackTrackTE m a)
+    { unFBackTrackT :: m (Stream (FBackTrackT m a) a)
     }
 
 type FBackTrack = FBackTrackT Identity
+
+yield :: Applicative f => FBackTrackT f a -> FBackTrackT f a
+yield = FBackTrackT . pure . Incomplete
+
+mcons :: Applicative f => a -> FBackTrackT f a -> FBackTrackT f a
+mcons a = FBackTrackT . pure . Choice a
 
 instance Monad m => Functor (FBackTrackT m) where
   fmap = liftM
@@ -47,27 +53,30 @@ instance Monad m => Applicative (FBackTrackT m) where
 instance Monad m => Monad (FBackTrackT m) where
   m >>= f =
     FBackTrackT $
-    unFBackTrackT m >>= \case
-      Nil -> pure Nil
-      One a -> unFBackTrackT $ f a
-      Choice a r ->
-        unFBackTrackT $ f a <|> (FBackTrackT . pure . Incomplete $ r >>= f)
-      Incomplete i -> pure $ Incomplete (i >>= f)
+    unFBackTrackT m >>=
+    unFBackTrackT . \case
+      Nil -> empty
+      One a -> f a
+      Choice a r -> f a <|> yield (r >>= f)
+      Incomplete i -> yield (i >>= f)
 
 instance Monad m => Alternative (FBackTrackT m) where
   empty = FBackTrackT $ pure Nil
   m1 <|> m2 =
     FBackTrackT $
-    unFBackTrackT m1 >>= \case
-      Nil -> pure $ Incomplete m2
-      One a -> pure $ Choice a m2
-      Choice a r -> pure $ Choice a (m2 <|> r)
+    unFBackTrackT m1 >>=
+    unFBackTrackT . \case
+      Nil -> yield m2
+      One a -> mcons a m2
+      Choice a r -> mcons a (m2 <|> r) -- interleaving
       Incomplete i ->
-        unFBackTrackT m2 >>= \case
-          Nil -> pure $ Incomplete i
-          One b -> pure $ Choice b i
-          Choice b r -> pure $ Choice b (i <|> r)
-          Incomplete j -> pure $ Incomplete (i <|> j)
+        FBackTrackT $
+        unFBackTrackT m2 >>=
+        unFBackTrackT . \case
+          Nil -> yield i
+          One b -> mcons b i
+          Choice b r -> mcons b (i <|> r)
+          Incomplete j -> yield (i <|> j)
 
 instance Monad m => MonadPlus (FBackTrackT m)
 #if MIN_VERSION_base(4,9,0)
