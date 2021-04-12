@@ -12,7 +12,7 @@ module Control.Monad.Logic.FBackTrackT
   ) where
 
 import Control.Applicative (Alternative(..), Applicative(..))
-import Control.Monad (MonadPlus(..), liftM, liftM2)
+import Control.Monad (MonadPlus(..), ap, liftM)
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.Logic.Class (MonadLogic(..))
 import Control.Monad.Trans (MonadIO(..), MonadTrans(..))
@@ -48,7 +48,7 @@ instance Monad m => Functor (FBackTrackT m) where
 
 instance Monad m => Applicative (FBackTrackT m) where
   pure = FBackTrackT . pure . One
-  liftA2 = liftM2
+  (<*>) = ap
 
 instance Monad m => Monad (FBackTrackT m) where
   m >>= f =
@@ -133,7 +133,11 @@ observeManyT n m =
 observeMany :: Int -> FBackTrack a -> [a]
 observeMany n = runIdentity . observeManyT n
 
+#if !MIN_VERSION_base(4,13,0)
 observeT :: Monad m => FBackTrackT m a -> m a
+#else
+observeT :: MonadFail m => FBackTrackT m a -> m a
+#endif
 observeT m =
   unFBackTrackT m >>= \case
     Nil -> fail "No answer."
