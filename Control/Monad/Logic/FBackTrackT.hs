@@ -3,6 +3,8 @@
 
 module Control.Monad.Logic.FBackTrackT
   ( FBackTrackT
+  , observe
+  , observeT
   , observeAll
   , observeAllT
   , observeMany
@@ -32,6 +34,8 @@ newtype FBackTrackT m a =
   FBackTrackT
     { unFBackTrackT :: m (FBackTrackTE m a)
     }
+
+type FBackTrack = FBackTrackT Identity
 
 instance Monad m => Functor (FBackTrackT m) where
   fmap = liftM
@@ -103,7 +107,7 @@ observeAllT m =
       pure (a : t)
     Incomplete r -> observeAllT r
 
-observeAll :: FBackTrackT Identity a -> [a]
+observeAll :: FBackTrack a -> [a]
 observeAll = runIdentity . observeAllT
 
 observeManyT :: Monad m => Int -> FBackTrackT m a -> m [a]
@@ -117,5 +121,16 @@ observeManyT n m =
       pure (a : t)
     Incomplete r -> observeManyT n r
 
-observeMany :: Int -> FBackTrackT Identity a -> [a]
+observeMany :: Int -> FBackTrack a -> [a]
 observeMany n = runIdentity . observeManyT n
+
+observeT :: Monad m => FBackTrackT m a -> m a
+observeT m =
+  unFBackTrackT m >>= \case
+    Nil -> fail "No answer."
+    One a -> pure a
+    Choice a _ -> pure a
+    Incomplete r -> observeT r
+
+observe :: FBackTrack a -> a
+observe = runIdentity . observeT
