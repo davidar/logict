@@ -1,8 +1,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Control.Monad.Logic.FBackTrackT
-  ( FBackTrackT
+module Control.Monad.Logic.Fair
+  ( FairLogicT
   , observe
   , observeT
   , observeAll
@@ -30,73 +30,73 @@ data Stream s a
   | Choice a s
   | Incomplete s
 
-newtype FBackTrackT m a =
-  FBackTrackT
-    { unFBackTrackT :: m (Stream (FBackTrackT m a) a)
+newtype FairLogicT m a =
+  FairLogicT
+    { unFairLogicT :: m (Stream (FairLogicT m a) a)
     }
 
-type FBackTrack = FBackTrackT Identity
+type FairLogic = FairLogicT Identity
 
-yield :: Monad m => FBackTrackT m a -> FBackTrackT m a
-yield = FBackTrackT . return . Incomplete
+yield :: Monad m => FairLogicT m a -> FairLogicT m a
+yield = FairLogicT . return . Incomplete
 
-mcons :: Monad m => a -> FBackTrackT m a -> FBackTrackT m a
-mcons a = FBackTrackT . return . Choice a
+mcons :: Monad m => a -> FairLogicT m a -> FairLogicT m a
+mcons a = FairLogicT . return . Choice a
 
-instance Monad m => Functor (FBackTrackT m) where
+instance Monad m => Functor (FairLogicT m) where
   fmap = liftM
 
-instance Monad m => Applicative (FBackTrackT m) where
-  pure = FBackTrackT . return . One
+instance Monad m => Applicative (FairLogicT m) where
+  pure = FairLogicT . return . One
   (<*>) = ap
 
-instance Monad m => Monad (FBackTrackT m) where
+instance Monad m => Monad (FairLogicT m) where
   return = pure
   m >>= f =
-    FBackTrackT $
-    unFBackTrackT m >>=
-    unFBackTrackT . \case
+    FairLogicT $
+    unFairLogicT m >>=
+    unFairLogicT . \case
       Nil -> empty
       One a -> f a
       Choice a r -> f a <|> yield (r >>= f)
       Incomplete i -> yield (i >>= f)
 
-instance Monad m => Alternative (FBackTrackT m) where
-  empty = FBackTrackT $ return Nil
+instance Monad m => Alternative (FairLogicT m) where
+  empty = FairLogicT $ return Nil
   m1 <|> m2 =
-    FBackTrackT $
-    unFBackTrackT m1 >>=
-    unFBackTrackT . \case
+    FairLogicT $
+    unFairLogicT m1 >>=
+    unFairLogicT . \case
       Nil -> yield m2
       One a -> mcons a m2
       Choice a r -> mcons a (m2 <|> r) -- interleaving
       Incomplete i ->
-        FBackTrackT $
-        unFBackTrackT m2 >>=
-        unFBackTrackT . \case
+        FairLogicT $
+        unFairLogicT m2 >>=
+        unFairLogicT . \case
           Nil -> yield i
           One b -> mcons b i
           Choice b r -> mcons b (i <|> r)
           Incomplete j -> yield (i <|> j)
 
-instance Monad m => MonadPlus (FBackTrackT m) where
+instance Monad m => MonadPlus (FairLogicT m) where
   mzero = empty
   mplus = (<|>)
 #if MIN_VERSION_base(4,9,0)
-instance Monad m => Semigroup (FBackTrackT m a) where
+instance Monad m => Semigroup (FairLogicT m a) where
   (<>) = mplus
   sconcat = foldr1 mplus
 #endif
-instance Monad m => Monoid (FBackTrackT m a) where
+instance Monad m => Monoid (FairLogicT m a) where
   mempty = empty
   mappend = (<|>)
   mconcat = F.asum
 
-instance Monad m => MonadLogic (FBackTrackT m) where
+instance Monad m => MonadLogic (FairLogicT m) where
   msplit m =
-    FBackTrackT $
-    unFBackTrackT m >>=
-    unFBackTrackT . \case
+    FairLogicT $
+    unFairLogicT m >>=
+    unFairLogicT . \case
       Nil -> return Nothing
       One x -> return $ Just (x, empty)
       Choice x r -> return $ Just (x, r)
@@ -104,15 +104,15 @@ instance Monad m => MonadLogic (FBackTrackT m) where
   interleave = (<|>)
   (>>-) = (>>=)
 
-instance MonadTrans FBackTrackT where
-  lift = FBackTrackT . liftM One
+instance MonadTrans FairLogicT where
+  lift = FairLogicT . liftM One
 
-instance MonadIO m => MonadIO (FBackTrackT m) where
+instance MonadIO m => MonadIO (FairLogicT m) where
   liftIO = lift . liftIO
 
-observeAllT :: Monad m => FBackTrackT m a -> m [a]
+observeAllT :: Monad m => FairLogicT m a -> m [a]
 observeAllT m =
-  unFBackTrackT m >>= \case
+  unFairLogicT m >>= \case
     Nil -> return []
     One a -> return [a]
     Choice a r -> do
@@ -120,13 +120,13 @@ observeAllT m =
       return (a : t)
     Incomplete r -> observeAllT r
 
-observeAll :: FBackTrack a -> [a]
+observeAll :: FairLogic a -> [a]
 observeAll = runIdentity . observeAllT
 
-observeManyT :: Monad m => Int -> FBackTrackT m a -> m [a]
+observeManyT :: Monad m => Int -> FairLogicT m a -> m [a]
 observeManyT 0 _ = return []
 observeManyT n m =
-  unFBackTrackT m >>= \case
+  unFairLogicT m >>= \case
     Nil -> return []
     One a -> return [a]
     Choice a r -> do
@@ -134,24 +134,24 @@ observeManyT n m =
       return (a : t)
     Incomplete r -> observeManyT n r
 
-observeMany :: Int -> FBackTrack a -> [a]
+observeMany :: Int -> FairLogic a -> [a]
 observeMany n = runIdentity . observeManyT n
 
 #if !MIN_VERSION_base(4,13,0)
-observeT :: Monad m => FBackTrackT m a -> m a
+observeT :: Monad m => FairLogicT m a -> m a
 #else
-observeT :: MonadFail m => FBackTrackT m a -> m a
+observeT :: MonadFail m => FairLogicT m a -> m a
 #endif
 observeT m =
-  unFBackTrackT m >>= \case
+  unFairLogicT m >>= \case
     Nil -> fail "No answer."
     One a -> return a
     Choice a _ -> return a
     Incomplete r -> observeT r
 
-observe :: FBackTrack a -> a
+observe :: FairLogic a -> a
 observe m =
-  case runIdentity (unFBackTrackT m) of
+  case runIdentity (unFairLogicT m) of
     Nil -> error "No answer."
     One a -> a
     Choice a _ -> a

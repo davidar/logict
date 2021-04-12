@@ -12,7 +12,7 @@ import           Control.Concurrent.Async ( race )
 import           Control.Exception
 import           Control.Monad.Identity
 import           Control.Monad.Logic.Class
-import           Control.Monad.Logic.FBackTrackT
+import           Control.Monad.Logic.Fair
 import           Control.Monad.Reader
 import qualified Control.Monad.State.Lazy as SL
 import qualified Control.Monad.State.Strict as SS
@@ -36,7 +36,7 @@ monadReader2 :: Assertion
 monadReader2 = assertEqual "should be equal" [(5, 0)] $
   runReader (observeAllT foo) 0
   where
-    foo :: FBackTrackT (Reader Int) (Int,Int)
+    foo :: FairLogicT (Reader Int) (Int,Int)
     foo = do
       x <- lift $ local (5+) ask
       y <- lift ask
@@ -69,7 +69,7 @@ oddsOrTwo = do x <- oddsOrTwoFair
 
 odds5down = return 5 `mplus` mempty `mplus` mempty `mplus` return 3 `mplus` return 1
 
-yieldWords :: Monad m => [String] -> FBackTrackT m String
+yieldWords :: Monad m => [String] -> FairLogicT m String
 yieldWords = go
   where go [] = mzero
         go (w:ws) = return w `mplus` go ws
@@ -153,7 +153,7 @@ main = defaultMain $
           in assertBool "ReaderT" $ null $ catMaybes $ runReaderT (msplit z) 0
 
         , testCase "msplit mzero :: LogicT" $
-          let z :: FBackTrackT [] String
+          let z :: FairLogicT [] String
               z = mzero
           in assertBool "LogicT" $ null $ catMaybes $ concat $ observeAllT (msplit z)
         , testCase "msplit mzero :: strict StateT" $
@@ -182,7 +182,7 @@ main = defaultMain $
             extract (msplit op >>= (\(Just (_,nxt)) -> msplit nxt)) @?= []
 
         , testCase "msplit LogicT" $ do
-            let op :: FBackTrackT [] Integer
+            let op :: FairLogicT [] Integer
                 op = foldr (mplus . return) mzero sample
                 extract = fmap fst . catMaybes . concat . observeAllT
             extract (msplit op) @?= [1]
