@@ -69,10 +69,30 @@ oddsOrTwo = do x <- oddsOrTwoFair
 
 odds5down = return 5 `mplus` mempty `mplus` mempty `mplus` return 3 `mplus` return 1
 
-yieldWords :: Monad m => [String] -> FairLogicT m String
-yieldWords = go
-  where go [] = mzero
-        go (w:ws) = return w `mplus` go ws
+pythagoreanTriples :: MonadPlus m => m (Int,Int,Int)
+pythagoreanTriples = do
+  let number = (return 0) `mplus` (number >>= return . succ)
+  i <- number
+  guard $ i > 0
+  j <- number
+  guard $ j > 0
+  k <- number
+  guard $ k > 0
+  guard $ i*i + j*j == k*k
+  return (i,j,k)
+
+pythagoreanTriplesLeftRecursion :: Monad m => FairLogicT m (Int,Int,Int)
+pythagoreanTriplesLeftRecursion = do
+  let number = (yield number >>= return . succ) `mplus` return 0
+  i <- number
+  j <- number
+  k <- number
+  guard $ i*i + j*j == k*k
+  return (i,j,k)
+
+-- a serious test of left recursion (due to Will Byrd)
+flaz :: Int -> FairLogic Int
+flaz x = yield (flaz x) `mplus` (yield (flaz x) `mplus` if x == 5 then return x else mzero)
 
 
 main :: IO ()
@@ -110,23 +130,9 @@ main = defaultMain $
 
   --------------------------------------------------
 
-  , testGroup "Control.Monad.Logic tests"
-    [{-
-      testCase "runLogicT multi" $ ["Hello world !"] @=?
-      let conc w o = fmap ((w `mappend` " ") `mappend`) o in
-      (runLogicT (yieldWords ["Hello", "world"]) conc (return "!"))
-
-    , testCase "runLogicT none" $ ["!"] @=?
-      let conc w o = fmap ((w `mappend` " ") `mappend`) o in
-      (runLogicT (yieldWords []) conc (return "!"))
-
-    , testCase "runLogicT first" $ ["Hello"] @=?
-      (runLogicT (yieldWords ["Hello", "world"]) (\w -> const $ return w) (return "!"))
-
-    , testCase "runLogic multi" $ 20 @=? runLogic odds5down (+) 11
-    , testCase "runLogic none"  $ 11 @=? runLogic mzero (+) (11 :: Integer)
-
-    ,-} testCase "observe multi" $ 5 @=? observe odds5down
+  , testGroup "Control.Monad.Logic compatibility tests"
+    [
+      testCase "observe multi" $ 5 @=? observe odds5down
     , testCase "observe none" $ (Left "No answer." @=?) =<< safely (observe mzero)
 
     , testCase "observeAll multi" $ [5,1,3] @=? observeAll odds5down
@@ -134,6 +140,21 @@ main = defaultMain $
 
     , testCase "observeMany multi" $ [5,1] @=? observeMany 2 odds5down
     , testCase "observeMany none" $ ([] :: [Integer]) @=? observeMany 2 mzero
+    ]
+
+  --------------------------------------------------
+
+  , testGroup "Control.Monad.Logic.Fair tests"
+    [
+      testCase "Pythagorean triples" $ [(3,4,5),(4,3,5),(6,8,10),(8,6,10),(5,12,13),(12,5,13),(9,12,15)] @=?
+      observeMany 7 pythagoreanTriples
+
+    , testCase "Pythagorean triples (left recursion)" $ [(3,4,5),(4,3,5),(6,8,10),(8,6,10)] @=?
+      filter (\(i,j,k) -> i /= 0 && j /= 0 && k /= 0)
+      (observeMany 27 pythagoreanTriplesLeftRecursion)
+
+    , testCase "flaz (left recursion)" $ replicate 15 5 @=?
+      observeMany 15 (flaz 5)
     ]
 
   --------------------------------------------------

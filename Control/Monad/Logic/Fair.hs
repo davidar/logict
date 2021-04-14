@@ -3,12 +3,14 @@
 
 module Control.Monad.Logic.Fair
   ( FairLogicT
+  , FairLogic
   , observe
   , observeT
   , observeAll
   , observeAllT
   , observeMany
   , observeManyT
+  , yield
   ) where
 
 import Control.Applicative (Alternative(..), Applicative(..))
