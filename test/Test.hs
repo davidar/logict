@@ -30,24 +30,24 @@ import           Data.Monoid
 
 monadReader1 :: Assertion
 monadReader1 = assertEqual "should be equal" [5 :: Int] $
-  runReader (observeAllT (lift $ local (+ 5) ask)) 0
+  runReader (observeAllT (local (+ 5) ask)) 0
 
 monadReader2 :: Assertion
 monadReader2 = assertEqual "should be equal" [(5, 0)] $
   runReader (observeAllT foo) 0
   where
-    foo :: FairLogicT (Reader Int) (Int,Int)
+    foo :: MonadReader Int m => m (Int,Int)
     foo = do
-      x <- lift $ local (5+) ask
-      y <- lift ask
+      x <- local (5+) ask
+      y <- ask
       return (x,y)
 
 monadReader3 :: Assertion
 monadReader3 = assertEqual "should be equal" [5,3] $
   runReader (observeAllT (plus5 `mplus` mzero `mplus` plus3)) (0 :: Int)
   where
-    plus5 = lift $ local (5+) ask
-    plus3 = lift $ local (3+) ask
+    plus5 = local (5+) ask
+    plus3 = local (3+) ask
 
 nats, odds, oddsOrTwo,
   oddsOrTwoUnfair, oddsOrTwoFair,

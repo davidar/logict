@@ -1,5 +1,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Control.Monad.Logic.Fair
   ( FairLogicT
@@ -15,8 +18,11 @@ module Control.Monad.Logic.Fair
 
 import Control.Applicative (Alternative(..), Applicative(..))
 import Control.Monad (MonadPlus(..), ap, liftM)
+import qualified Control.Monad.Fail as Fail
 import Control.Monad.Identity (Identity(..))
 import Control.Monad.Logic.Class (MonadLogic(..))
+import Control.Monad.Reader.Class (MonadReader(..))
+import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans (MonadIO(..), MonadTrans(..))
 #if !MIN_VERSION_base(4,8,0)
 import Data.Monoid (Monoid(..))
@@ -67,6 +73,12 @@ instance Monad m => Monad (FairLogicT m) where
       One a -> f a
       Choice a r -> f a <|> yield (r >>= f)
       Incomplete i -> yield (i >>= f)
+#if !MIN_VERSION_base(4,13,0)
+  fail = Fail.fail
+#endif
+
+instance Monad m => Fail.MonadFail (FairLogicT m) where
+  fail _ = empty
 
 instance Monad m => Alternative (FairLogicT m) where
   empty = FairLogicT $ return Nil
@@ -110,6 +122,14 @@ instance MonadTrans FairLogicT where
 
 instance MonadIO m => MonadIO (FairLogicT m) where
   liftIO = lift . liftIO
+
+instance MonadReader r m => MonadReader r (FairLogicT m) where
+  ask = lift ask
+  local f = FairLogicT . local f . unFairLogicT
+
+instance MonadState s m => MonadState s (FairLogicT m) where
+  get = lift get
+  put = lift . put
 
 observeAllT :: Monad m => FairLogicT m a -> m [a]
 observeAllT m =
